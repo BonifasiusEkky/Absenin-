@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../data/providers/location_access_provider.dart';
+import '../../services/location_service.dart';
 
 class FaceCaptureScreen extends StatefulWidget {
   const FaceCaptureScreen({super.key});
@@ -46,6 +49,53 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final access = context.watch<LocationAccessProvider>();
+    // If user navigated here without passing verification, show blocking UI.
+    if (!access.isAuthorized) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Scan Wajah')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline, size: 64, color: Colors.orange),
+                const SizedBox(height: 16),
+                const Text('Verifikasi lokasi diperlukan sebelum scan wajah', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                if (access.lastResult?.message != null)
+                  Text(
+                    access.lastResult!.message!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: access.checking
+                      ? null
+                      : () async {
+                          final res = await access.verify();
+                          if (res.status == LocationCheckStatus.inside && context.mounted) {
+                            setState(() {}); // rebuild to show camera
+                          }
+                        },
+                  icon: access.checking
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.my_location, size: 18),
+                  label: Text(access.checking ? 'Memeriksa...' : 'Cek Lokasi'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Kembali'),
+                )
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Scan Wajah')),
       body: loading

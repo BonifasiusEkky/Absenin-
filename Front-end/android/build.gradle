@@ -5,6 +5,19 @@ allprojects {
     }
 }
 
+// Provide a flutter config map so plugin library modules (e.g. geolocator_android)
+// that reference flutter.compileSdkVersion / flutter.minSdkVersion can resolve values
+ext {
+    flutter = [
+            compileSdkVersion: 35,
+            minSdkVersion     : 21,
+            targetSdkVersion  : 35,
+            ndkVersion        : null,
+            versionCode       : 1,
+            versionName       : "1.0.0"
+    ]
+}
+
 rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/routing/app_router.dart';
 import 'data/providers/attendance_provider.dart';
+import 'data/providers/location_access_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,7 @@ class AbsenInApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AttendanceProvider()),
+        ChangeNotifierProvider(create: (_) => LocationAccessProvider()),
       ],
       child: MaterialApp.router(
         title: 'Absen.In',

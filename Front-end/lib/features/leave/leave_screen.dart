@@ -8,18 +8,86 @@ class LeaveScreen extends StatefulWidget {
 }
 
 class _LeaveScreenState extends State<LeaveScreen> {
-  bool showPie = false;
+  bool showPie = false; // false = ring annual quota, true = pie distribution categories
 
-  // Dummy quota & history data
-  final int used = 4;
-  final int quota = 15;
+  // Annual quota (example)
+  final int annualQuota = 15;
 
   final List<_LeaveHistory> history = [
-    _LeaveHistory(applied: DateTime(2025, 5, 20), start: DateTime(2025, 6, 1), end: DateTime(2025, 6, 2), status: LeaveStatus.approved),
-    _LeaveHistory(applied: DateTime(2025, 5, 20), start: DateTime(2025, 6, 3), end: DateTime(2025, 6, 3), status: LeaveStatus.pending),
-    _LeaveHistory(applied: DateTime(2025, 5, 20), start: DateTime(2025, 6, 4), end: DateTime(2025, 6, 5), status: LeaveStatus.pending),
-    _LeaveHistory(applied: DateTime(2025, 5, 20), start: DateTime(2025, 6, 6), end: DateTime(2025, 6, 7), status: LeaveStatus.rejected),
+    _LeaveHistory(
+      applied: DateTime(2025, 5, 20),
+      start: DateTime(2025, 6, 1),
+      end: DateTime(2025, 6, 2),
+      status: LeaveStatus.approved,
+      type: LeaveType.annual,
+      reason: 'Liburan keluarga',
+    ),
+    // Dummy Cuti Sakit (approved) agar grafik kategori menampilkan nilai > 0 untuk sakit
+    _LeaveHistory(
+      applied: DateTime(2025, 5, 21),
+      start: DateTime(2025, 6, 2),
+      end: DateTime(2025, 6, 2),
+      status: LeaveStatus.approved,
+      type: LeaveType.sick,
+      reason: 'Flu ringgan',
+    ),
+    _LeaveHistory(
+      applied: DateTime(2025, 5, 22),
+      start: DateTime(2025, 6, 3),
+      end: DateTime(2025, 6, 3),
+      status: LeaveStatus.pending,
+      type: LeaveType.sick,
+      reason: 'Demam',
+    ),
+    _LeaveHistory(
+      applied: DateTime(2025, 5, 25),
+      start: DateTime(2025, 6, 4),
+      end: DateTime(2025, 6, 5),
+      status: LeaveStatus.approved,
+      type: LeaveType.other,
+      reason: 'Urusan keluarga',
+    ),
+    _LeaveHistory(
+      applied: DateTime(2025, 5, 27),
+      start: DateTime(2025, 6, 6),
+      end: DateTime(2025, 6, 7),
+      status: LeaveStatus.rejected,
+      type: LeaveType.annual,
+      reason: 'Trip pantai',
+    ),
   ];
+
+  int _days(_LeaveHistory h) => h.end.difference(h.start).inDays + 1;
+
+  int get usedAnnual => history.where((h) => h.type == LeaveType.annual && h.status == LeaveStatus.approved).fold(0, (p, h) => p + _days(h));
+  int get usedSick => history.where((h) => h.type == LeaveType.sick && h.status == LeaveStatus.approved).fold(0, (p, h) => p + _days(h));
+  int get usedOther => history.where((h) => h.type == LeaveType.other && h.status == LeaveStatus.approved).fold(0, (p, h) => p + _days(h));
+
+  void _openLeaveForm() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _LeaveForm(onSubmit: (type, start, end, reason) {
+        setState(() {
+          history.insert(
+            0,
+            _LeaveHistory(
+              applied: DateTime.now(),
+              start: start,
+              end: end,
+              status: LeaveStatus.pending,
+              type: type,
+              reason: reason,
+            ),
+          );
+        });
+        _showSnack(context, 'Pengajuan ${type.label} tersimpan (Pending)');
+      }),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,16 +111,22 @@ class _LeaveScreenState extends State<LeaveScreen> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: _openLeaveForm,
         backgroundColor: primary,
-        child: const Icon(Icons.add),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _QuotaCard(used: used, quota: quota, showPie: showPie),
+            _QuotaCard(
+              showPie: showPie,
+              annualQuota: annualQuota,
+              usedAnnual: usedAnnual,
+              usedSick: usedSick,
+              usedOther: usedOther,
+            ),
             const SizedBox(height: 20),
             Row(
               children: [
@@ -77,67 +151,55 @@ class _LeaveScreenState extends State<LeaveScreen> {
 }
 
 class _QuotaCard extends StatelessWidget {
-  final int used;
-  final int quota;
   final bool showPie;
-  const _QuotaCard({required this.used, required this.quota, required this.showPie});
+  final int annualQuota;
+  final int usedAnnual;
+  final int usedSick;
+  final int usedOther;
+  const _QuotaCard({
+    required this.showPie,
+    required this.annualQuota,
+    required this.usedAnnual,
+    required this.usedSick,
+    required this.usedOther,
+  });
   @override
   Widget build(BuildContext context) {
-    final percent = quota == 0 ? 0.0 : used / quota;
+    final percent = annualQuota == 0 ? 0.0 : usedAnnual / annualQuota;
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       elevation: 1,
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           child: showPie
-              ? SizedBox(
-                  key: const ValueKey('pie'),
-                  height: 180,
-                  child: PieChart(
-                    PieChartData(
-                      sectionsSpace: 4,
-                      centerSpaceRadius: 32,
-                      sections: [
-                        PieChartSectionData(
-                          value: used.toDouble(),
-                          color: Theme.of(context).colorScheme.primary,
-                          title: used.toString(),
-                          radius: 56,
-                          titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        PieChartSectionData(
-                          value: (quota - used).toDouble(),
-                          color: Colors.grey.shade300,
-                          title: (quota - used).toString(),
-                          radius: 50,
-                          titleStyle: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w600, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
+              ? _PieDistribution(
+                  key: const ValueKey('pieDist'),
+                  usedAnnual: usedAnnual,
+                  usedSick: usedSick,
+                  usedOther: usedOther,
                 )
               : SizedBox(
                   key: const ValueKey('ring'),
-                  height: 180,
+                  height: 160,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       SizedBox(
-                        height: 120,
-                        width: 120,
+                        height: 110,
+                        width: 110,
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
                             CircularProgressIndicator(
                               value: percent,
-                              strokeWidth: 10,
+                              strokeWidth: 8,
                               backgroundColor: Colors.grey.shade300,
                               valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
                             ),
                             Center(
-                              child: Text('$used/$quota', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                              child: Text('$usedAnnual/$annualQuota', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
                             ),
                           ],
                         ),
@@ -146,9 +208,9 @@ class _QuotaCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Container(width: 12, height: 12, decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, shape: BoxShape.circle)),
+                          _LegendDot(color: Theme.of(context).colorScheme.primary),
                           const SizedBox(width: 6),
-                          const Text('Kuota Cuti Yang Telah Diambil', style: TextStyle(fontSize: 12)),
+                          const Text('Kuota Cuti Yang Telah Diambil', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                         ],
                       )
                     ],
@@ -161,13 +223,23 @@ class _QuotaCard extends StatelessWidget {
 }
 
 enum LeaveStatus { approved, pending, rejected }
+enum LeaveType { annual, sick, other }
 
 class _LeaveHistory {
   final DateTime applied;
   final DateTime start;
   final DateTime end;
   final LeaveStatus status;
-  _LeaveHistory({required this.applied, required this.start, required this.end, required this.status});
+  final LeaveType type;
+  final String reason;
+  _LeaveHistory({
+    required this.applied,
+    required this.start,
+    required this.end,
+    required this.status,
+    required this.type,
+    this.reason = '',
+  });
 }
 
 class _HistoryCard extends StatelessWidget {
@@ -263,4 +335,288 @@ class _StatusInfo {
 String _fmtDate(DateTime d) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   return '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  const _LegendDot({required this.color});
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
+}
+
+class _PieDistribution extends StatelessWidget {
+  final int usedAnnual;
+  final int usedSick;
+  final int usedOther;
+  const _PieDistribution({super.key, required this.usedAnnual, required this.usedSick, required this.usedOther});
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    const sickColor = Color(0xFFF2A534);
+    const otherColor = Color(0xFF6C63FF);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 135,
+          child: PieChart(
+            PieChartData(
+              sectionsSpace: 8,
+              centerSpaceRadius: 42,
+              startDegreeOffset: -20,
+              sections: [
+                PieChartSectionData(
+                  value: usedAnnual.toDouble(),
+                  color: primary,
+                  title: usedAnnual == 0 ? '' : usedAnnual.toString(),
+                  radius: 44,
+                  titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
+                ),
+                PieChartSectionData(
+                  value: usedSick.toDouble(),
+                  color: sickColor,
+                  title: usedSick == 0 ? '' : usedSick.toString(),
+                  radius: 38,
+                  titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 10),
+                ),
+                PieChartSectionData(
+                  value: usedOther.toDouble(),
+                  color: otherColor,
+                  title: usedOther == 0 ? '' : usedOther.toString(),
+                  radius: 36,
+                  titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _chipLegend(primary, 'Cuti Tahunan', usedAnnual),
+            _chipLegend(sickColor, 'Cuti Sakit', usedSick),
+            _chipLegend(otherColor, 'Cuti Lainnya', usedOther),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Center(
+          child: Text(
+            'Total Diambil: ${usedAnnual + usedSick + usedOther} hari',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _legendItem(Color c, String label, int value) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _LegendDot(color: c),
+          const SizedBox(width: 6),
+          Text('$label ($value)', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+        ],
+      );
+
+  static Widget _chipLegend(Color color, String label, int value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(.12),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: color.withOpacity(.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _LegendDot(color: color),
+          const SizedBox(width: 6),
+          Text(
+            '$label ($value)',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color.darken()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+extension _ColorShade on Color {
+  Color darken([double amount = .2]) {
+    final hsl = HSLColor.fromColor(this);
+    final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
+    return hslDark.toColor();
+  }
+}
+
+extension on LeaveType {
+  String get label {
+    switch (this) {
+      case LeaveType.annual:
+        return 'Cuti Tahunan';
+      case LeaveType.sick:
+        return 'Cuti Sakit';
+      case LeaveType.other:
+        return 'Cuti Lainnya';
+    }
+  }
+}
+
+void _showSnack(BuildContext context, String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+// (Removed extension; logic moved into _LeaveScreenState)
+
+class _LeaveForm extends StatefulWidget {
+  final void Function(LeaveType type, DateTime start, DateTime end, String reason) onSubmit;
+  const _LeaveForm({required this.onSubmit});
+  @override
+  State<_LeaveForm> createState() => _LeaveFormState();
+}
+
+class _LeaveFormState extends State<_LeaveForm> {
+  LeaveType type = LeaveType.annual;
+  DateTime? start;
+  DateTime? end;
+  final TextEditingController reasonC = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    reasonC.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate(bool isStart) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isStart) {
+          start = picked;
+          if (end != null && end!.isBefore(start!)) end = start;
+        } else {
+          end = picked;
+          if (start != null && end!.isBefore(start!)) start = end;
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 20, 20, bottom + 24),
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
+              ),
+              const SizedBox(height: 16),
+              const Text('Ajukan Cuti', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 20),
+              const Text('Jenis Cuti', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                children: LeaveType.values.map((lv) {
+                  final sel = type == lv;
+                  return ChoiceChip(
+                    label: Text(lv.label),
+                    selected: sel,
+                    onSelected: (_) => setState(() => type = lv),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(child: _DatePickTile(label: 'Tanggal Mulai', date: start, onTap: () => _pickDate(true))),
+                  const SizedBox(width: 12),
+                  Expanded(child: _DatePickTile(label: 'Tanggal Akhir', date: end, onTap: () => _pickDate(false))),
+                ],
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: reasonC,
+                decoration: const InputDecoration(labelText: 'Alasan', border: OutlineInputBorder()),
+                minLines: 2,
+                maxLines: 4,
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Isi alasan' : null,
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: FilledButton(
+                  onPressed: () {
+                    if (start == null || end == null) {
+                      _showSnack(context, 'Tanggal belum dipilih');
+                      return;
+                    }
+                    if (_formKey.currentState!.validate()) {
+                      widget.onSubmit(type, start!, end!, reasonC.text.trim());
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: const Text('Kirim Pengajuan'),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DatePickTile extends StatelessWidget {
+  final String label;
+  final DateTime? date;
+  final VoidCallback onTap;
+  const _DatePickTile({required this.label, required this.date, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+          color: Colors.grey.shade50,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
+            const SizedBox(height: 6),
+            Text(
+              date == null ? 'Pilih tanggal' : _fmtDate(date!),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

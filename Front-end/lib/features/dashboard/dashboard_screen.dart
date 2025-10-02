@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../data/providers/attendance_provider.dart';
 import '../attendance/attendance_list_screen.dart';
+import '../../services/location_service.dart';
+import '../../data/providers/location_access_provider.dart';
+import '../../services/office_config.dart';
 import '../leave/leave_screen.dart';
 
 class MainShell extends StatefulWidget {
@@ -109,7 +112,6 @@ class _HeaderSectionState extends State<_HeaderSection> {
             decoration: BoxDecoration(
               color: primary,
               borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(28),
                 bottomRight: Radius.circular(28),
               ),
             ),
@@ -159,10 +161,63 @@ class _HeaderSectionState extends State<_HeaderSection> {
   }
 }
 
-class _AttendanceCard extends StatelessWidget {
+class _AttendanceCard extends StatefulWidget {
   final String dateStr;
   final String timeStr;
   const _AttendanceCard({super.key, required this.dateStr, required this.timeStr});
+
+  @override
+  State<_AttendanceCard> createState() => _AttendanceCardState();
+}
+
+class _AttendanceCardState extends State<_AttendanceCard> {
+  bool _checking = false;
+  String? _lastMessage;
+  LocationCheckStatus? _lastStatus;
+
+  Future<void> _handleAbsenMasuk(BuildContext context) async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    final provider = context.read<LocationAccessProvider>();
+    final res = await provider.verify();
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _lastMessage = res.message ?? _statusToMessage(res.status, res.distanceMeters);
+      _lastStatus = res.status;
+    });
+    if (res.status == LocationCheckStatus.inside) {
+      context.push('/camera/face');
+    } else if (res.status == LocationCheckStatus.outside) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res.message ?? 'Anda berada di luar radius kantor')),);
+    } else if (res.status != LocationCheckStatus.inside) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res.message ?? 'Gagal verifikasi lokasi')),
+      );
+    }
+  }
+
+  String _statusToMessage(LocationCheckStatus status, double? distance) {
+    switch (status) {
+      case LocationCheckStatus.inside:
+        return 'Lokasi terverifikasi (dalam radius ${OfficeConfig.radiusMeters.toStringAsFixed(0)} m)';
+      case LocationCheckStatus.outside:
+        return 'Diluar radius (${distance?.toStringAsFixed(1)} m)';
+      case LocationCheckStatus.permissionDenied:
+        return 'Izin lokasi ditolak';
+      case LocationCheckStatus.permissionPermanentlyDenied:
+        return 'Izin ditolak permanen - buka pengaturan';
+      case LocationCheckStatus.serviceDisabled:
+        return 'Aktifkan GPS / Location Service';
+      case LocationCheckStatus.timeout:
+        return 'Gagal mendapatkan lokasi (timeout)';
+      case LocationCheckStatus.mocked:
+        return 'Lokasi terdeteksi spoof/mocked';
+      case LocationCheckStatus.error:
+        return 'Kesalahan verifikasi';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -179,11 +234,11 @@ class _AttendanceCard extends StatelessWidget {
               children: [
                 const Icon(Icons.calendar_today_outlined, size: 16),
                 const SizedBox(width: 6),
-                Text(dateStr, style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+                Text(widget.dateStr, style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 const Icon(Icons.access_time, size: 16),
                 const SizedBox(width: 4),
-                Text(timeStr, style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+                Text(widget.timeStr, style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
               ],
             ),
             const SizedBox(height: 16),
@@ -242,10 +297,53 @@ class _AttendanceCard extends StatelessWidget {
               height: 46,
               child: FilledButton(
                 style: FilledButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                onPressed: () => context.push('/camera/face'),
-                child: const Text('Absen Masuk', style: TextStyle(fontWeight: FontWeight.w600)),
+                onPressed: _checking ? null : () => _handleAbsenMasuk(context),
+                child: _checking
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                      )
+                    : const Text('Absen Masuk', style: TextStyle(fontWeight: FontWeight.w600)),
               ),
-            )
+            ),
+            if (_lastMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      _lastStatus == LocationCheckStatus.inside
+                          ? Icons.check_circle
+                          : _lastStatus == LocationCheckStatus.outside
+                              ? Icons.error_outline
+                              : Icons.info_outline,
+                      size: 14,
+                      color: _lastStatus == LocationCheckStatus.inside
+                          ? Colors.green
+                          : _lastStatus == LocationCheckStatus.outside
+                              ? Colors.orange
+                              : Colors.blueGrey,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _lastMessage!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _lastStatus == LocationCheckStatus.inside
+                              ? Colors.green
+                              : _lastStatus == LocationCheckStatus.outside
+                                  ? Colors.orange.shade800
+                                  : Colors.blueGrey,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
           ],
         ),
       ),
