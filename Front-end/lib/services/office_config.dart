@@ -4,8 +4,7 @@ import 'location_service.dart';
 /// In future this can be loaded from backend / remote config.
 class OfficeConfig {
   static const List<LatLng> officePoints = [
-    // Jakarta Pusat (dummy)
-    LatLng(-6.200000, 106.816666),
+    LatLng(-7.9364416, 112.6259625),
   ];
-  static const double radiusMeters = 120; // Default allowed radius.
+  static const double radiusMeters = 120; 
 }
