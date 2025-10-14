@@ -1,0 +1,8 @@
+deepface
+fastapi
+uvicorn[standard]
+python-multipart
+retina-face
+opencv-python-headless
+requests
+pydantic
