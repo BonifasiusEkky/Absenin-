@@ -7,6 +7,7 @@ import '../../services/location_service.dart';
 import '../../data/providers/location_access_provider.dart';
 import '../../services/office_config.dart';
 import '../leave/leave_screen.dart';
+import '../profile/profile_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -19,7 +20,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
   // Pages; only some implemented.
-  const pages = [DashboardScreen(), AttendanceListScreen(), SizedBox(), LeaveScreen(), SizedBox()];
+  const pages = [DashboardScreen(), AttendanceListScreen(), SizedBox(), LeaveScreen(), ProfileScreen()];
     return Scaffold(
       body: SafeArea(top: false, child: pages[current]),
       bottomNavigationBar: NavigationBar(
@@ -387,6 +388,7 @@ class _QuickAction extends StatelessWidget {
           GestureDetector(
             onTap: () {
               if (label == 'Attendance') context.push('/attendance');
+              if (label == 'Assignment') context.push('/assignment');
             },
             child: Container(
               height: 54,

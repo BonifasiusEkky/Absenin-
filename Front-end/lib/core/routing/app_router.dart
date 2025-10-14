@@ -8,6 +8,7 @@ import '../../features/analytics/analytics_screen.dart';
 import '../../features/camera/face_capture_screen.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/leave/leave_screen.dart';
+import '../../features/assignment/assignment_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/splash',
@@ -24,5 +25,6 @@ final appRouter = GoRouter(
     GoRoute(path: '/analytics', builder: (_, __) => const AnalyticsScreen()),
     GoRoute(path: '/camera/face', builder: (_, __) => const FaceCaptureScreen()),
     GoRoute(path: '/leave', builder: (_, __) => const LeaveScreen()),
+    GoRoute(path: '/assignment', builder: (_, __) => const AssignmentScreen()),
   ],
 );
