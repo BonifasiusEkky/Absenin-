@@ -6,20 +6,30 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from deepface import DeepFace
-# FaceDetector is optional across DeepFace versions; import defensively
 try:
-    from deepface.detectors import FaceDetector  # type: ignore
+    from deepface.detectors import FaceDetector  
 except Exception:
-    FaceDetector = None  # Fallback: we'll warm-up via DeepFace.represent
-import json
+    FaceDetector = None  # Fallback
 
-# Optional: control DeepFace cache dir before anything else uses it
-DEEPFACE_HOME = os.environ.get("DEEPFACE_HOME")
-if not DEEPFACE_HOME:
-    # Default to user home .deepface to match DeepFace behavior
-    DEEPFACE_HOME = os.path.join(os.path.expanduser("~"), ".deepface")
-    os.environ["DEEPFACE_HOME"] = DEEPFACE_HOME
-os.makedirs(os.path.join(DEEPFACE_HOME, "weights"), exist_ok=True)
+_BASE_HOME = os.path.expanduser("~")
+env_home = os.environ.get("DEEPFACE_HOME")
+if env_home:
+    # If DEEPFACE_HOME erroneously points to the .deepface directory, normalize it back to the base home
+    norm = env_home.replace("\\", "/").rstrip("/")
+    if norm.endswith("/.deepface"):
+        os.environ["DEEPFACE_HOME"] = os.path.dirname(env_home)
+else:
+    os.environ["DEEPFACE_HOME"] = _BASE_HOME
+
+# Our resolved DeepFace directory and weights path
+DEEPFACE_DIR = os.path.join(os.environ.get("DEEPFACE_HOME", _BASE_HOME), ".deepface")
+WEIGHTS_DIR = os.path.join(DEEPFACE_DIR, "weights")
+os.makedirs(WEIGHTS_DIR, exist_ok=True)
+try:
+    # Hint DeepFace to use the resolved directory directly
+    DeepFace.home = DEEPFACE_DIR  # type: ignore[attr-defined]
+except Exception:
+    pass
 
 # Configurable defaults (env overridable)
 DEFAULT_MODEL_NAME = os.environ.get("FACE_MODEL", "ArcFace")
@@ -53,11 +63,11 @@ async def health():
 
 
 def _weights_status() -> Dict[str, Any]:
-    weights_dir = os.path.join(DEEPFACE_HOME, "weights")
+    weights_dir = WEIGHTS_DIR
     arcface_path = os.path.join(weights_dir, "arcface_weights.h5")
     retinaface_path = os.path.join(weights_dir, "retinaface.h5")
     return {
-        "deepface_home": DEEPFACE_HOME,
+        "deepface_home": DEEPFACE_DIR,
         "weights_dir": weights_dir,
         "arcface_weights": os.path.exists(arcface_path),
         "retinaface_weights": os.path.exists(retinaface_path),
@@ -75,6 +85,9 @@ async def status():
             "distance_metric": DEFAULT_DISTANCE_METRIC,
         },
         "weights": _weights_status(),
+        "env": {
+            "DEEPFACE_HOME": os.environ.get("DEEPFACE_HOME"),
+        }
     }
 
 
