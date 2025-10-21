@@ -20,9 +20,9 @@ class AttendanceController extends Controller
     public function checkIn(Request $request)
     {
         $data = $request->validate([
-            'user_id' => 'required|string',
+            'user_id' => 'required|integer',
             'date' => 'required|date',
-            'time' => 'required',
+            'time' => 'required', // expected format HH:MM:SS
             'latitude' => 'nullable|numeric',
             'longitude' => 'nullable|numeric',
             'distance_m' => 'nullable|numeric',
@@ -42,15 +42,19 @@ class AttendanceController extends Controller
     public function checkOut(Request $request)
     {
         $data = $request->validate([
-            'user_id' => 'required|string',
+            'user_id' => 'required|integer',
             'date' => 'required|date',
-            'time' => 'required',
+            'time' => 'required', // expected format HH:MM:SS
+            'activity' => 'sometimes|string|nullable',
         ]);
         $att = Attendance::where('user_id', $data['user_id'])->where('date', $data['date'])->first();
         if (!$att) {
             return response()->json(['message' => 'Attendance not found'], 404);
         }
         $att->check_out = $data['time'];
+        if (array_key_exists('activity', $data)) {
+            $att->activity_note = $data['activity'];
+        }
         $att->save();
         return response()->json($att);
     }

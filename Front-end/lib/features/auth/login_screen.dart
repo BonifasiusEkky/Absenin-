@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../../services/auth_service.dart';
+import '../../core/network/api_client.dart';
+import '../../data/providers/user_provider.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -27,7 +31,27 @@ class LoginScreen extends StatelessWidget {
                 width: double.infinity,
                 height: 48,
                 child: FilledButton(
-                  onPressed: () => context.go('/home'),
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final api = ApiClient();
+                    try {
+                      final auth = AuthService(api);
+                      final session = await auth.login(email: emailCtrl.text.trim(), password: passCtrl.text);
+                      if (!context.mounted) return;
+                      // Update UserProvider with backend ID and profile
+                      final user = context.read<UserProvider>();
+                      user.updateProfile(
+                        name: session.name,
+                        email: session.email,
+                        backendUserId: session.userId,
+                      );
+                      context.go('/home');
+                    } catch (e) {
+                      messenger.showSnackBar(SnackBar(content: Text('Login gagal: $e')));
+                    } finally {
+                      api.close();
+                    }
+                  },
                   child: const Text('Login'),
                 ),
               ),

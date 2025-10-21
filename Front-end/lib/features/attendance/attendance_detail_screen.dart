@@ -15,7 +15,11 @@ class AttendanceDetailScreen extends StatelessWidget {
     final provider = context.watch<AttendanceProvider>();
     AttendanceRecord? record = provider.records.firstWhere(
       (r) => date != null && r.date.year == date.year && r.date.month == date.month && r.date.day == date.day,
-      orElse: () => AttendanceRecord(date: date ?? DateTime.now()),
+      orElse: () => AttendanceRecord(
+        id: 'local-missing',
+        userId: 'unknown',
+        date: date ?? DateTime.now(),
+      ),
     );
     final dateLabel = provider.formatDate(record.date);
     final checkIn = record.checkIn == null ? '-' : _fmtTime(record.checkIn!);

@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Api\FaceVerificationController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\UserFaceController;
 use App\Http\Controllers\Api\AssignmentController;
 use App\Http\Controllers\Api\AttendanceController;
@@ -44,6 +45,10 @@ Route::get('/health/db', function () {
         return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
     }
 });
+
+// Auth
+Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
 // Face verification: forwards to FastAPI service
 Route::post('/face/verify', [FaceVerificationController::class, 'verify']);

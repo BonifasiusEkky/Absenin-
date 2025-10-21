@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../data/providers/attendance_provider.dart';
+import '../../data/providers/user_provider.dart';
+import '../../data/models/attendance.dart';
 import '../attendance/attendance_list_screen.dart';
 import '../../services/location_service.dart';
 import '../../data/providers/location_access_provider.dart';
@@ -102,6 +104,16 @@ class _HeaderSectionState extends State<_HeaderSection> {
     final primary = Theme.of(context).colorScheme.primary;
     final dateStr = _formatIndonesianDate(now);
     final timeStr = _formatTime(now);
+    final user = context.watch<UserProvider>();
+    // Lazy load attendance if not loaded yet
+    final attProv = context.read<AttendanceProvider>();
+    final userProv = context.read<UserProvider>();
+    if (attProv.records.isEmpty) {
+      // fire and forget
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) attProv.loadFromBackend(userProv);
+      });
+    }
     return SizedBox(
       height: 400, // slightly more to lower white card per request
       child: Stack(
@@ -137,15 +149,16 @@ class _HeaderSectionState extends State<_HeaderSection> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Text('Bonifasius Ekky', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600)),
+                      Text(user.name, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 4),
-                      Text('Junior Software', style: TextStyle(color: Colors.white.withOpacity(.85), fontSize: 13)),
+                      Text(user.role, style: TextStyle(color: Colors.white.withOpacity(.85), fontSize: 13)),
                     ],
                   ),
                 ),
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 30,
-                  backgroundImage: NetworkImage('https://ui-avatars.com/api/?name=Eky&background=0D8ABC&color=fff'),
+                  backgroundImage: NetworkImage('https://ui-avatars.com/api/?name='
+                      '${Uri.encodeComponent(user.name)}&background=0D8ABC&color=fff'),
                 )
               ],
             ),
@@ -223,6 +236,26 @@ class _AttendanceCardState extends State<_AttendanceCard> {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final today = DateTime.now();
+    final p = context.watch<AttendanceProvider>();
+    final todayRec = p.records.firstWhere(
+      (r) => r.date.year == today.year && r.date.month == today.month && r.date.day == today.day,
+      orElse: () => AttendanceRecord(
+        id: 'temp', userId: '-', date: DateTime(today.year, today.month, today.day),
+      ),
+    );
+    String fmtTime(DateTime? dt) => dt == null
+        ? '- - : - -'
+        : '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  final hasIn = todayRec.checkIn != null;
+  final hasOut = todayRec.checkOut != null;
+  final isCheckoutPhase = hasIn && !hasOut;
+  final isDisabled = hasIn && hasOut; // already checked out
+  final buttonLabel = !hasIn
+    ? 'Absen Masuk'
+    : isCheckoutPhase
+      ? 'Absen Pulang'
+      : 'Sudah Absen Pulang';
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -258,7 +291,7 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      Text('- - : - -', style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(fmtTime(todayRec.checkIn), style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
@@ -276,7 +309,7 @@ class _AttendanceCardState extends State<_AttendanceCard> {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      Text('- - : - -', style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(fmtTime(todayRec.checkOut), style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                     ],
                   ),
                 ),
@@ -297,15 +330,28 @@ class _AttendanceCardState extends State<_AttendanceCard> {
               width: double.infinity,
               height: 46,
               child: FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                onPressed: _checking ? null : () => _handleAbsenMasuk(context),
+                style: FilledButton.styleFrom(
+                  backgroundColor: isCheckoutPhase ? Colors.redAccent : Colors.green,
+                  disabledBackgroundColor: Colors.grey.shade400,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: (_checking || isDisabled)
+                    ? null
+                    : () async {
+                        if (isCheckoutPhase) {
+                          if (!context.mounted) return;
+                          context.push('/camera/checkout');
+                        } else {
+                          await _handleAbsenMasuk(context);
+                        }
+                      },
                 child: _checking
                     ? const SizedBox(
                         height: 22,
                         width: 22,
                         child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
                       )
-                    : const Text('Absen Masuk', style: TextStyle(fontWeight: FontWeight.w600)),
+                    : Text(buttonLabel, style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
             ),
             if (_lastMessage != null)

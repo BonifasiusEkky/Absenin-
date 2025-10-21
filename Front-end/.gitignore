@@ -31,6 +31,9 @@ migrate_working_dir/
 .pub/
 /build/
 
+# Local environment config (do not commit secrets)
+lib/core/config/env.dart
+
 # Symbolication related
 app.*.symbols
 

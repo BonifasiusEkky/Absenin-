@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../data/providers/attendance_provider.dart';
 import '../../data/models/attendance.dart';
+import '../../data/providers/user_provider.dart';
 
 class AttendanceListScreen extends StatefulWidget {
   const AttendanceListScreen({super.key});
@@ -17,8 +18,30 @@ class _AttendanceListScreenState extends State<AttendanceListScreen> {
   String query = '';
 
   @override
+  void initState() {
+    super.initState();
+    // Defer to first frame to ensure providers are mounted
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final prov = context.read<AttendanceProvider>();
+      final user = context.read<UserProvider>();
+      prov.loadFromBackend(user);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = context.watch<AttendanceProvider>();
+    if (provider.loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (provider.error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Attendance')),
+        body: Center(child: Text('Gagal memuat data: ${provider.error}')),
+      );
+    }
     final recs = provider.records.where((r) {
       // search by day/month text
       final dateText = provider.formatDate(r.date).toLowerCase();
@@ -35,7 +58,6 @@ class _AttendanceListScreenState extends State<AttendanceListScreen> {
       }
     }).toList();
 
-    final canPop = Navigator.of(context).canPop();
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(

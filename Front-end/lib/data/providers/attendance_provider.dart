@@ -1,20 +1,38 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../models/attendance.dart';
+import '../../services/attendance_service.dart';
+import '../../core/network/api_client.dart';
+import '../providers/user_provider.dart';
 
 class AttendanceProvider extends ChangeNotifier {
   final List<AttendanceRecord> _records = [];
+  bool _loading = false;
+  String? _error;
 
-  AttendanceProvider() {
-    // seed dummy data last 15 days
-    final now = DateTime.now();
-    for (int i = 0; i < 15; i++) {
-      final d = DateTime(now.year, now.month, now.day - i);
-      _records.add(AttendanceRecord(
-        date: d,
-        checkIn: d.subtract(const Duration(hours: -8)).add(const Duration(minutes: 2)),
-        checkOut: d.add(const Duration(hours: 17, minutes: 5)),
-      ));
+  bool get loading => _loading;
+  String? get error => _error;
+
+  Future<void> loadFromBackend(UserProvider user) async {
+    if (_loading) return;
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final api = ApiClient();
+      final svc = AttendanceService(api);
+      final list = await svc.list(userId: user.backendUserId.toString());
+      _records
+        ..clear()
+        ..addAll(list.map((e) => AttendanceRecord.fromJson(e)));
+      // sort by date desc to mimic backend ordering
+      _records.sort((a, b) => b.date.compareTo(a.date));
+      api.close();
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _loading = false;
+      notifyListeners();
     }
   }
 

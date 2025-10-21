@@ -6,6 +6,7 @@ import '../../features/attendance/attendance_detail_screen.dart';
 import '../../features/attendance/attendance_list_screen.dart';
 import '../../features/analytics/analytics_screen.dart';
 import '../../features/camera/face_capture_screen.dart';
+import '../../features/camera/checkout_face_screen.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/leave/leave_screen.dart';
 import '../../features/assignment/assignment_screen.dart';
@@ -24,6 +25,7 @@ final appRouter = GoRouter(
     ),
     GoRoute(path: '/analytics', builder: (_, __) => const AnalyticsScreen()),
     GoRoute(path: '/camera/face', builder: (_, __) => const FaceCaptureScreen()),
+  GoRoute(path: '/camera/checkout', builder: (_, __) => const CheckoutFaceScreen()),
     GoRoute(path: '/leave', builder: (_, __) => const LeaveScreen()),
     GoRoute(path: '/assignment', builder: (_, __) => const AssignmentScreen()),
   ],
