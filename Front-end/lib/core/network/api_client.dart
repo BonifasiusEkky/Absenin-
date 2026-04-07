@@ -2,20 +2,22 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 
+import '../../services/session_storage.dart';
+
 class ApiClient {
   final http.Client _client;
   final Duration timeout;
   ApiClient({http.Client? client, this.timeout = const Duration(seconds: 30)}) : _client = client ?? http.Client();
 
   Future<http.Response> get(Uri uri, {Map<String, String>? headers}) async {
-    final res = await _client.get(uri, headers: _baseHeaders(headers)).timeout(timeout);
+    final res = await _client.get(uri, headers: await _baseHeaders(headers)).timeout(timeout);
     _ensureSuccess(res);
     return res;
   }
 
   Future<http.Response> postJson(Uri uri, Object body, {Map<String, String>? headers}) async {
     final res = await _client
-        .post(uri, headers: _baseHeaders(headers, json: true), body: jsonEncode(body))
+        .post(uri, headers: await _baseHeaders(headers, json: true), body: jsonEncode(body))
         .timeout(timeout);
     _ensureSuccess(res);
     return res;
@@ -26,7 +28,7 @@ class ApiClient {
     if (fields != null) req.fields.addAll(fields);
     if (files != null) req.files.addAll(files);
     // Ensure we always request JSON to avoid HTML redirect pages
-    final mergedHeaders = _baseHeaders(headers);
+    final mergedHeaders = await _baseHeaders(headers);
     req.headers.addAll(mergedHeaders);
     final streamed = await req.send().timeout(timeout);
     final res = await http.Response.fromStream(streamed);
@@ -34,12 +36,24 @@ class ApiClient {
     return res;
   }
 
-  Map<String, String> _baseHeaders(Map<String, String>? headers, {bool json = false}) {
+  Future<Map<String, String>> _baseHeaders(Map<String, String>? headers, {bool json = false}) async {
     final base = <String, String>{
       HttpHeaders.acceptHeader: 'application/json',
     };
     if (json) base[HttpHeaders.contentTypeHeader] = 'application/json';
     if (headers != null) base.addAll(headers);
+
+    if (!base.containsKey(HttpHeaders.authorizationHeader)) {
+      try {
+        final session = await StoredSession.load();
+        if (session != null && session.token.isNotEmpty) {
+          base[HttpHeaders.authorizationHeader] = 'Bearer ${session.token}';
+        }
+      } catch (_) {
+        // ignore storage errors
+      }
+    }
+
     return base;
   }
 

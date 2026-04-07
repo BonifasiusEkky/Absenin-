@@ -7,11 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
-import '../../core/config/env.dart';
 import '../../core/network/api_client.dart';
 import '../../data/providers/attendance_provider.dart';
+import '../../data/providers/location_access_provider.dart';
 import '../../data/providers/user_provider.dart';
 import '../../services/attendance_service.dart';
+import '../../services/location_service.dart';
 
 class CheckoutFaceScreen extends StatefulWidget {
   const CheckoutFaceScreen({super.key});
@@ -25,7 +26,8 @@ class _CheckoutFaceScreenState extends State<CheckoutFaceScreen> {
   XFile? captured;
   bool loading = true;
   bool working = false;
-  final TextEditingController activityCtrl = TextEditingController();
+
+  final _activityCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -57,30 +59,43 @@ class _CheckoutFaceScreenState extends State<CheckoutFaceScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final api = ApiClient();
     try {
-      final user = context.read<UserProvider>();
-      // verify face via backend proxy
-      final res = await api.postMultipart(
-        Env.api('/api/face/verify'),
-        fields: {'user_id': user.backendUserId.toString()},
-        files: [await http.MultipartFile.fromPath('image', captured!.path)],
-      );
-      final json = jsonDecode(res.body) as Map<String, dynamic>;
-      if (json['verified'] != true) {
-        messenger.showSnackBar(const SnackBar(content: Text('Wajah tidak cocok. Coba ulangi.')));
+      final activity = _activityCtrl.text.trim();
+      if (activity.length < 3) {
+        messenger.showSnackBar(const SnackBar(content: Text('Aktivitas wajib diisi (min 3 karakter)')));
         setState(() => working = false);
         return;
       }
-      // submit checkout with activity
+
+      // Ensure we have a fresh location reading (backend requires lat/lng)
+      final access = context.read<LocationAccessProvider>();
+      final loc = await access.verify();
+      if (!access.isAuthorized) {
+        messenger.showSnackBar(SnackBar(content: Text(loc.message ?? 'Gagal mendapatkan lokasi')));
+        setState(() => working = false);
+        return;
+      }
+      if (loc.latitude == null || loc.longitude == null) {
+        messenger.showSnackBar(const SnackBar(content: Text('Koordinat lokasi tidak tersedia')));
+        setState(() => working = false);
+        return;
+      }
+
+      // Submit checkout (backend verifies face + stores proof)
       final now = DateTime.now();
       final svc = AttendanceService(api);
       await svc.checkOut(
-        userId: user.backendUserId.toString(),
         date: DateTime(now.year, now.month, now.day),
         time: now,
-        activity: activityCtrl.text.trim(),
+        latitude: loc.latitude!,
+        longitude: loc.longitude!,
+        photo: File(captured!.path),
+        activity: activity,
       );
       // refresh provider
-      try { await context.read<AttendanceProvider>().loadFromBackend(user); } catch (_) {}
+      try {
+        final user = context.read<UserProvider>();
+        await context.read<AttendanceProvider>().loadFromBackend(user);
+      } catch (_) {}
       if (!mounted) return;
       messenger.showSnackBar(const SnackBar(content: Text('Absen pulang tersimpan')));
       Navigator.of(context).pop();
@@ -93,8 +108,8 @@ class _CheckoutFaceScreenState extends State<CheckoutFaceScreen> {
             final errors = body['errors'] as Map;
             final flat = errors.values.expand((v) => (v as List).map((x) => x.toString())).join('\n');
             if (flat.isNotEmpty) msg = flat;
-          } else if (body['ok'] == false && body['error'] is String) {
-            msg = body['error'];
+          } else if (body['message'] is String) {
+            msg = body['message'] as String;
           }
         }
       } catch (_) {}
@@ -114,7 +129,7 @@ class _CheckoutFaceScreenState extends State<CheckoutFaceScreen> {
   @override
   void dispose() {
     controller?.dispose();
-    activityCtrl.dispose();
+    _activityCtrl.dispose();
     super.dispose();
   }
 
@@ -134,20 +149,18 @@ class _CheckoutFaceScreenState extends State<CheckoutFaceScreen> {
                             ? CameraPreview(controller!)
                             : Image.file(File(captured!.path), fit: BoxFit.cover),
                       ),
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: Card(
-                          elevation: 2,
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: TextField(
-                              controller: activityCtrl,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                labelText: 'Laporan aktivitas hari ini (opsional)',
-                                border: OutlineInputBorder(),
+                      // Face frame overlay
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: Center(
+                            child: AspectRatio(
+                              aspectRatio: 1,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(color: Colors.white.withOpacity(0.9), width: 4),
+                                ),
+                                margin: const EdgeInsets.symmetric(horizontal: 48),
                               ),
                             ),
                           ),
@@ -158,30 +171,44 @@ class _CheckoutFaceScreenState extends State<CheckoutFaceScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Row(
+                  child: Column(
                     children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: captured != null ? () => setState(() => captured = null) : null,
-                          child: const Text('Ulang Foto'),
+                      TextField(
+                        controller: _activityCtrl,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: const InputDecoration(
+                          labelText: 'Aktivitas hari ini (wajib)',
+                          border: OutlineInputBorder(),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: working
-                              ? null
-                              : () async {
-                                  if (captured == null) {
-                                    await _capture();
-                                  } else {
-                                    await _verifyAndCheckout();
-                                  }
-                                },
-                          child: working
-                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Text(captured == null ? 'Ambil Foto' : 'Selesai'),
-                        ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: captured != null ? () => setState(() => captured = null) : null,
+                              child: const Text('Ulang Foto'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: working
+                                  ? null
+                                  : () async {
+                                      if (captured == null) {
+                                        await _capture();
+                                      } else {
+                                        await _verifyAndCheckout();
+                                      }
+                                    },
+                              child: working
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : Text(captured == null ? 'Ambil Foto' : 'Selesai'),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

@@ -21,6 +21,10 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role',
+        'is_active',
+        'work_mode',
+        'job_title',
     ];
 
     /**
@@ -41,7 +45,13 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'is_active' => 'boolean',
     ];
+
+    public function isHrd(): bool
+    {
+        return $this->role === 'hrd';
+    }
 
     /**
      * Faces registered for this user (used for DeepFace verification)

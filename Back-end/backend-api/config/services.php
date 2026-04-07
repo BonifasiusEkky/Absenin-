@@ -28,6 +28,10 @@ return [
     // External Face Verification microservice (FastAPI)
     'face_api' => [
         'url' => env('FACE_API_URL', 'http://127.0.0.1:8001'),
+        'model' => env('FACE_API_MODEL', 'ArcFace'),
+        'detector_backend' => env('FACE_API_DETECTOR', 'retinaface'),
+        'distance_metric' => env('FACE_API_DISTANCE', 'cosine'),
+        'verify_threshold' => env('FACE_API_THRESHOLD'),
     ],
 
     'ses' => [

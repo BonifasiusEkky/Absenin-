@@ -43,7 +43,10 @@ class LoginScreen extends StatelessWidget {
                       user.updateProfile(
                         name: session.name,
                         email: session.email,
+                        role: session.jobTitle ?? user.role,
                         backendUserId: session.userId,
+                        backendRole: session.backendRole,
+                        workMode: session.workMode,
                       );
                       context.go('/home');
                     } catch (e) {

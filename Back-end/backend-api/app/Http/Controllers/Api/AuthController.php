@@ -26,6 +26,10 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
+        if ($user->is_active === false) {
+            return response()->json(['message' => 'User is inactive'], 403);
+        }
+
         $token = $user->createToken('mobile')->plainTextToken;
 
         return response()->json([
@@ -34,6 +38,10 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'role' => $user->role,
+                'work_mode' => $user->work_mode,
+                'job_title' => $user->job_title,
+                'is_active' => (bool) $user->is_active,
             ],
             'token' => $token,
         ]);

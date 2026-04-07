@@ -1,8 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../data/providers/user_provider.dart';
+import '../../core/network/api_client.dart';
+import '../../services/auth_service.dart';
+import '../../services/session_storage.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -51,9 +55,48 @@ class ProfileScreen extends StatelessWidget {
             icon: const Icon(Icons.edit_outlined),
             label: const Text('Edit Profil'),
           ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => _logout(context),
+            icon: const Icon(Icons.logout),
+            label: const Text('Logout'),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Keluar dari akun ini?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Logout')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final api = ApiClient();
+    try {
+      final stored = await StoredSession.load();
+      final token = stored?.token;
+      if (token != null && token.isNotEmpty) {
+        await AuthService(api).logout(token);
+      } else {
+        await StoredSession.clear();
+      }
+      if (!context.mounted) return;
+      context.go('/login');
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Gagal logout: $e')));
+    } finally {
+      api.close();
+    }
   }
 
   Future<void> _changeAvatar(BuildContext context) async {

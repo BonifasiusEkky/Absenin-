@@ -1,5 +1,13 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+
+import '../../data/models/leave_request.dart';
+import '../../data/providers/leave_provider.dart';
 
 class LeaveScreen extends StatefulWidget {
   const LeaveScreen({super.key});
@@ -13,55 +21,28 @@ class _LeaveScreenState extends State<LeaveScreen> {
   // Annual quota (example)
   final int annualQuota = 15;
 
-  final List<_LeaveHistory> history = [
-    _LeaveHistory(
-      applied: DateTime(2025, 5, 20),
-      start: DateTime(2025, 6, 1),
-      end: DateTime(2025, 6, 2),
-      status: LeaveStatus.approved,
-      type: LeaveType.annual,
-      reason: 'Liburan keluarga',
-    ),
-    // Dummy Cuti Sakit (approved) agar grafik kategori menampilkan nilai > 0 untuk sakit
-    _LeaveHistory(
-      applied: DateTime(2025, 5, 21),
-      start: DateTime(2025, 6, 2),
-      end: DateTime(2025, 6, 2),
-      status: LeaveStatus.approved,
-      type: LeaveType.sick,
-      reason: 'Flu ringgan',
-    ),
-    _LeaveHistory(
-      applied: DateTime(2025, 5, 22),
-      start: DateTime(2025, 6, 3),
-      end: DateTime(2025, 6, 3),
-      status: LeaveStatus.pending,
-      type: LeaveType.sick,
-      reason: 'Demam',
-    ),
-    _LeaveHistory(
-      applied: DateTime(2025, 5, 25),
-      start: DateTime(2025, 6, 4),
-      end: DateTime(2025, 6, 5),
-      status: LeaveStatus.approved,
-      type: LeaveType.other,
-      reason: 'Urusan keluarga',
-    ),
-    _LeaveHistory(
-      applied: DateTime(2025, 5, 27),
-      start: DateTime(2025, 6, 6),
-      end: DateTime(2025, 6, 7),
-      status: LeaveStatus.rejected,
-      type: LeaveType.annual,
-      reason: 'Trip pantai',
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<LeaveProvider>().load();
+    });
+  }
 
-  int _days(_LeaveHistory h) => h.end.difference(h.start).inDays + 1;
+  int get usedAnnual {
+    final items = context.read<LeaveProvider>().items;
+    return items.where((h) => h.type == 'annual' && h.status == 'approved').fold(0, (p, h) => p + h.days);
+  }
 
-  int get usedAnnual => history.where((h) => h.type == LeaveType.annual && h.status == LeaveStatus.approved).fold(0, (p, h) => p + _days(h));
-  int get usedSick => history.where((h) => h.type == LeaveType.sick && h.status == LeaveStatus.approved).fold(0, (p, h) => p + _days(h));
-  int get usedOther => history.where((h) => h.type == LeaveType.other && h.status == LeaveStatus.approved).fold(0, (p, h) => p + _days(h));
+  int get usedSick {
+    final items = context.read<LeaveProvider>().items;
+    return items.where((h) => h.type == 'sick' && h.status == 'approved').fold(0, (p, h) => p + h.days);
+  }
+
+  int get usedOther {
+    final items = context.read<LeaveProvider>().items;
+    return items.where((h) => h.type == 'other' && h.status == 'approved').fold(0, (p, h) => p + h.days);
+  }
 
   void _openLeaveForm() {
     showModalBottomSheet(
@@ -70,28 +51,31 @@ class _LeaveScreenState extends State<LeaveScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => _LeaveForm(onSubmit: (type, start, end, reason) {
-        setState(() {
-          history.insert(
-            0,
-            _LeaveHistory(
-              applied: DateTime.now(),
-              start: start,
-              end: end,
-              status: LeaveStatus.pending,
-              type: type,
-              reason: reason,
-            ),
+      builder: (ctx) => _LeaveForm(
+        onSubmit: (type, start, end, reason, attachment) async {
+          final provider = context.read<LeaveProvider>();
+          final created = await provider.submit(
+            type: type.apiValue,
+            startDate: start,
+            endDate: end,
+            reason: reason,
+            attachmentFile: attachment,
           );
-        });
-        _showSnack(context, 'Pengajuan ${type.label} tersimpan (Pending)');
-      }),
+          if (!mounted) return;
+          if (created == null) {
+            _showSnack(context, provider.error ?? 'Gagal mengajukan cuti');
+            return;
+          }
+          _showSnack(context, 'Pengajuan ${type.label} terkirim (Pending)');
+        },
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
+    final provider = context.watch<LeaveProvider>();
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
@@ -139,10 +123,37 @@ class _LeaveScreenState extends State<LeaveScreen> {
                 )
               ],
             ),
-            ...history.map((h) => Padding(
+            if (provider.loading)
+              const Padding(
+                padding: EdgeInsets.only(top: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (provider.error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Row(
+                  children: [
+                    Expanded(child: Text('Gagal memuat: ${provider.error}')),
+                    const SizedBox(width: 12),
+                    OutlinedButton(
+                      onPressed: provider.load,
+                      child: const Text('Coba lagi'),
+                    ),
+                  ],
+                ),
+              )
+            else if (provider.items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 16),
+                child: Text('Belum ada pengajuan cuti.'),
+              )
+            else
+              ...provider.items.map(
+                (h) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _HistoryCard(item: h),
-                )),
+                ),
+              ),
           ],
         ),
       ),
@@ -190,16 +201,25 @@ class _QuotaCard extends StatelessWidget {
                         height: 110,
                         width: 110,
                         child: Stack(
-                          fit: StackFit.expand,
+                          alignment: Alignment.center,
                           children: [
-                            CircularProgressIndicator(
-                              value: percent,
-                              strokeWidth: 8,
-                              backgroundColor: Colors.grey.shade300,
-                              valueColor: AlwaysStoppedAnimation(Theme.of(context).colorScheme.primary),
+                            SizedBox.expand(
+                              child: CircularProgressIndicator(
+                                value: percent.clamp(0.0, 1.0),
+                                strokeWidth: 8,
+                                backgroundColor: Colors.grey.shade300,
+                                valueColor: AlwaysStoppedAnimation(LeaveType.annual.color),
+                              ),
                             ),
-                            Center(
-                              child: Text('$usedAnnual/$annualQuota', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '$usedAnnual',
+                                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                                ),
+                                const Text('hari', style: TextStyle(fontSize: 11)),
+                              ],
                             ),
                           ],
                         ),
@@ -208,7 +228,7 @@ class _QuotaCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _LegendDot(color: Theme.of(context).colorScheme.primary),
+                          _LegendDot(color: LeaveType.annual.color),
                           const SizedBox(width: 6),
                           const Text('Kuota Cuti Yang Telah Diambil', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
                         ],
@@ -222,28 +242,10 @@ class _QuotaCard extends StatelessWidget {
   }
 }
 
-enum LeaveStatus { approved, pending, rejected }
 enum LeaveType { annual, sick, other }
 
-class _LeaveHistory {
-  final DateTime applied;
-  final DateTime start;
-  final DateTime end;
-  final LeaveStatus status;
-  final LeaveType type;
-  final String reason;
-  _LeaveHistory({
-    required this.applied,
-    required this.start,
-    required this.end,
-    required this.status,
-    required this.type,
-    this.reason = '',
-  });
-}
-
 class _HistoryCard extends StatelessWidget {
-  final _LeaveHistory item;
+  final LeaveRequest item;
   const _HistoryCard({required this.item});
 
   @override
@@ -263,7 +265,10 @@ class _HistoryCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('Mengajukan pada: ${_fmtDate(item.applied)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                child: Text(
+                  'Mengajukan pada: ${_fmtDate(item.createdAt ?? DateTime.now())}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -278,9 +283,9 @@ class _HistoryCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _MiniInfo(label: 'Hari Awal', value: _fmtDate(item.start))),
+              Expanded(child: _MiniInfo(label: 'Hari Awal', value: _fmtDate(item.startDate))),
               const SizedBox(width: 12),
-              Expanded(child: _MiniInfo(label: 'Hari Akhir', value: _fmtDate(item.end))),
+              Expanded(child: _MiniInfo(label: 'Hari Akhir', value: _fmtDate(item.endDate))),
             ],
           )
         ],
@@ -288,14 +293,15 @@ class _HistoryCard extends StatelessWidget {
     );
   }
 
-  _StatusInfo _statusInfo(LeaveStatus status) {
+  _StatusInfo _statusInfo(String status) {
     switch (status) {
-      case LeaveStatus.approved:
+      case 'approved':
         return _StatusInfo('Disetujui', const Color(0xFF27AE60), const Color(0xFFDDF5E8));
-      case LeaveStatus.pending:
-        return _StatusInfo('Menunggu', const Color(0xFFF2A534), const Color(0xFFFFF2D9));
-      case LeaveStatus.rejected:
+      case 'rejected':
         return _StatusInfo('Ditolak', const Color(0xFFE53935), const Color(0xFFFFE3E3));
+      case 'pending':
+      default:
+        return _StatusInfo('Menunggu', const Color(0xFFF2A534), const Color(0xFFFFF2D9));
     }
   }
 }
@@ -355,9 +361,9 @@ class _PieDistribution extends StatelessWidget {
   const _PieDistribution({super.key, required this.usedAnnual, required this.usedSick, required this.usedOther});
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    const sickColor = Color(0xFFF2A534);
-    const otherColor = Color(0xFF6C63FF);
+    final annualColor = LeaveType.annual.color;
+    final sickColor = LeaveType.sick.color;
+    final otherColor = LeaveType.other.color;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -372,7 +378,7 @@ class _PieDistribution extends StatelessWidget {
               sections: [
                 PieChartSectionData(
                   value: usedAnnual.toDouble(),
-                  color: primary,
+                  color: annualColor,
                   title: usedAnnual == 0 ? '' : usedAnnual.toString(),
                   radius: 44,
                   titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
@@ -401,7 +407,7 @@ class _PieDistribution extends StatelessWidget {
           spacing: 10,
           runSpacing: 10,
           children: [
-            _chipLegend(primary, 'Cuti Tahunan', usedAnnual),
+            _chipLegend(annualColor, 'Cuti Tahunan', usedAnnual),
             _chipLegend(sickColor, 'Cuti Sakit', usedSick),
             _chipLegend(otherColor, 'Cuti Lainnya', usedOther),
           ],
@@ -457,7 +463,7 @@ extension _ColorShade on Color {
   }
 }
 
-extension on LeaveType {
+extension LeaveTypeExt on LeaveType {
   String get label {
     switch (this) {
       case LeaveType.annual:
@@ -468,6 +474,17 @@ extension on LeaveType {
         return 'Cuti Lainnya';
     }
   }
+
+  Color get color {
+    switch (this) {
+      case LeaveType.annual:
+        return const Color(0xFF2F80ED); // blue-ish for annual
+      case LeaveType.sick:
+        return const Color(0xFFF2A534); // orange for sick
+      case LeaveType.other:
+        return const Color(0xFF6C63FF); // purple for other
+    }
+  }
 }
 
 void _showSnack(BuildContext context, String msg) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -475,7 +492,7 @@ void _showSnack(BuildContext context, String msg) => ScaffoldMessenger.of(contex
 // (Removed extension; logic moved into _LeaveScreenState)
 
 class _LeaveForm extends StatefulWidget {
-  final void Function(LeaveType type, DateTime start, DateTime end, String reason) onSubmit;
+  final Future<void> Function(LeaveType type, DateTime start, DateTime end, String reason, File? attachment) onSubmit;
   const _LeaveForm({required this.onSubmit});
   @override
   State<_LeaveForm> createState() => _LeaveFormState();
@@ -487,11 +504,42 @@ class _LeaveFormState extends State<_LeaveForm> {
   DateTime? end;
   final TextEditingController reasonC = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  File? _attachment;
+  bool _submitting = false;
 
   @override
   void dispose() {
     reasonC.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickAttachmentFromCamera() async {
+    final picker = ImagePicker();
+    try {
+      final img = await picker.pickImage(source: ImageSource.camera, imageQuality: 85, maxWidth: 1800);
+      if (img != null) setState(() => _attachment = File(img.path));
+    } catch (_) {}
+  }
+
+  Future<void> _pickAttachmentFromGallery() async {
+    final picker = ImagePicker();
+    try {
+      final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85, maxWidth: 1800);
+      if (img != null) setState(() => _attachment = File(img.path));
+    } catch (_) {}
+  }
+
+  Future<void> _pickAttachmentFile() async {
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        withData: false,
+        type: FileType.custom,
+        allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+      );
+      final p = res?.files.single.path;
+      if (p != null) setState(() => _attachment = File(p));
+    } catch (_) {}
   }
 
   Future<void> _pickDate(bool isStart) async {
@@ -562,22 +610,69 @@ class _LeaveFormState extends State<_LeaveForm> {
                 maxLines: 4,
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Isi alasan' : null,
               ),
+              const SizedBox(height: 14),
+              const Text('Lampiran (opsional)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pickAttachmentFromCamera,
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: const Text('Kamera'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pickAttachmentFromGallery,
+                      icon: const Icon(Icons.photo_outlined),
+                      label: const Text('Galeri'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _pickAttachmentFile,
+                  icon: const Icon(Icons.attach_file),
+                  label: const Text('Pilih File (PDF/JPG/PNG)'),
+                ),
+              ),
+              if (_attachment != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: Text(_attachment!.path.split(Platform.pathSeparator).last, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                    IconButton(
+                      onPressed: () => setState(() => _attachment = null),
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Hapus lampiran',
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 28),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: FilledButton(
-                  onPressed: () {
+                  onPressed: _submitting
+                      ? null
+                      : () async {
                     if (start == null || end == null) {
                       _showSnack(context, 'Tanggal belum dipilih');
                       return;
                     }
                     if (_formKey.currentState!.validate()) {
-                      widget.onSubmit(type, start!, end!, reasonC.text.trim());
-                      Navigator.of(context).pop();
+                      setState(() => _submitting = true);
+                      await widget.onSubmit(type, start!, end!, reasonC.text.trim(), _attachment);
+                      if (mounted) Navigator.of(context).pop();
                     }
                   },
-                  child: const Text('Kirim Pengajuan'),
+                  child: Text(_submitting ? 'Mengirim...' : 'Kirim Pengajuan'),
                 ),
               )
             ],
@@ -585,6 +680,19 @@ class _LeaveFormState extends State<_LeaveForm> {
         ),
       ),
     );
+  }
+}
+
+extension LeaveTypeApi on LeaveType {
+  String get apiValue {
+    switch (this) {
+      case LeaveType.annual:
+        return 'annual';
+      case LeaveType.sick:
+        return 'sick';
+      case LeaveType.other:
+        return 'other';
+    }
   }
 }
 

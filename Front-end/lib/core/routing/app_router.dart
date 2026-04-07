@@ -10,9 +10,26 @@ import '../../features/camera/checkout_face_screen.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/leave/leave_screen.dart';
 import '../../features/assignment/assignment_screen.dart';
+import '../../services/session_storage.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/splash',
+  redirect: (context, state) async {
+    final loc = state.matchedLocation;
+    final isPublic = loc == '/splash' || loc == '/onboarding' || loc == '/login';
+
+    StoredSession? session;
+    try {
+      session = await StoredSession.load();
+    } catch (_) {
+      session = null;
+    }
+    final loggedIn = session != null && session.token.isNotEmpty;
+
+    if (!loggedIn && !isPublic) return '/login';
+    if (loggedIn && (loc == '/login' || loc == '/onboarding')) return '/home';
+    return null;
+  },
   routes: [
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
     GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),

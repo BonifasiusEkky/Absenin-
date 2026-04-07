@@ -5,9 +5,12 @@ import '../../data/providers/attendance_provider.dart';
 import '../../data/providers/user_provider.dart';
 import '../../data/models/attendance.dart';
 import '../attendance/attendance_list_screen.dart';
+import '../attendance/attendance_calendar_screen.dart';
 import '../../services/location_service.dart';
 import '../../data/providers/location_access_provider.dart';
 import '../../services/office_config.dart';
+// reverse geocoding no longer used in dashboard; distance-based check used instead
+import 'package:geolocator/geolocator.dart';
 import '../leave/leave_screen.dart';
 import '../profile/profile_screen.dart';
 
@@ -22,7 +25,7 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
   // Pages; only some implemented.
-  const pages = [DashboardScreen(), AttendanceListScreen(), SizedBox(), LeaveScreen(), ProfileScreen()];
+  const pages = [DashboardScreen(), AttendanceListScreen(), AttendanceCalendarScreen(), LeaveScreen(), ProfileScreen()];
     return Scaffold(
       body: SafeArea(top: false, child: pages[current]),
       bottomNavigationBar: NavigationBar(
@@ -188,6 +191,53 @@ class _AttendanceCardState extends State<_AttendanceCard> {
   bool _checking = false;
   String? _lastMessage;
   LocationCheckStatus? _lastStatus;
+  String? _locationName; // kept for potential future use
+  bool _loadingLocation = true;
+  double? _distanceMeters;
+  bool? _isInside;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocationName();
+  }
+
+  Future<void> _loadLocationName() async {
+    try {
+      final office = context.read<LocationAccessProvider>().office;
+      final officePoints = office != null ? [LatLng(office.latitude, office.longitude)] : OfficeConfig.officePoints;
+      final radiusMeters = office?.radiusMeters ?? OfficeConfig.radiusMeters;
+
+      Position? pos = await Geolocator.getLastKnownPosition();
+      if (pos == null) {
+        pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.low, timeLimit: const Duration(seconds: 5));
+      }
+        final Position p = pos;
+        {
+        // Compute distance to nearest office point
+        double minD = double.infinity;
+        for (final o in officePoints) {
+          final d = Geolocator.distanceBetween(p.latitude, p.longitude, o.lat, o.lng);
+          if (d < minD) minD = d;
+        }
+        final bool inside = minD <= radiusMeters;
+        if (!mounted) return;
+        setState(() {
+          _distanceMeters = minD.isFinite ? minD : null;
+          _isInside = inside;
+          _loadingLocation = false;
+        });
+        return;
+        }
+    } catch (_) {
+      // ignore, will show fallback
+    }
+    if (!mounted) return;
+    setState(() {
+      _locationName = null;
+      _loadingLocation = false;
+    });
+  }
 
   Future<void> _handleAbsenMasuk(BuildContext context) async {
     if (_checking) return;
@@ -200,12 +250,9 @@ class _AttendanceCardState extends State<_AttendanceCard> {
       _lastMessage = res.message ?? _statusToMessage(res.status, res.distanceMeters);
       _lastStatus = res.status;
     });
-    if (res.status == LocationCheckStatus.inside) {
+    if (provider.isAuthorized) {
       context.push('/camera/face');
-    } else if (res.status == LocationCheckStatus.outside) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(res.message ?? 'Anda berada di luar radius kantor')),);
-    } else if (res.status != LocationCheckStatus.inside) {
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(res.message ?? 'Gagal verifikasi lokasi')),
       );
@@ -213,9 +260,10 @@ class _AttendanceCardState extends State<_AttendanceCard> {
   }
 
   String _statusToMessage(LocationCheckStatus status, double? distance) {
+    final radiusMeters = context.read<LocationAccessProvider>().office?.radiusMeters ?? OfficeConfig.radiusMeters;
     switch (status) {
       case LocationCheckStatus.inside:
-        return 'Lokasi terverifikasi (dalam radius ${OfficeConfig.radiusMeters.toStringAsFixed(0)} m)';
+        return 'Lokasi terverifikasi (dalam radius ${radiusMeters.toStringAsFixed(0)} m)';
       case LocationCheckStatus.outside:
         return 'Diluar radius (${distance?.toStringAsFixed(1)} m)';
       case LocationCheckStatus.permissionDenied:
@@ -317,11 +365,42 @@ class _AttendanceCardState extends State<_AttendanceCard> {
             ),
             const SizedBox(height: 14),
             Row(
-              children: const [
-                Icon(Icons.location_pin, size: 18, color: Colors.blueGrey),
-                SizedBox(width: 6),
+              children: [
+                const Icon(Icons.location_pin, size: 18, color: Colors.blueGrey),
+                const SizedBox(width: 6),
                 Expanded(
-                  child: Text('Naraya Telematika', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                  child: _loadingLocation
+                      ? const Text('Memuat lokasi...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500))
+                      : _distanceMeters == null
+                          ? const Text('Lokasi tidak tersedia', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500))
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${_distanceMeters! < 1000 ? _distanceMeters!.toStringAsFixed(0) + " m" : (_distanceMeters! / 1000).toStringAsFixed(2) + " km"} dari kantor',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: (_isInside ?? false) ? Colors.green : Colors.red,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text('Min radius: ${(context.read<LocationAccessProvider>().office?.radiusMeters ?? OfficeConfig.radiusMeters).toStringAsFixed(0)} m', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                              ],
+                            ),
+                ),
+                // Retry button to attempt reverse-geocoding again if initial lookup failed
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 18, color: Colors.blueGrey),
+                  tooltip: 'Muat ulang lokasi',
+                  onPressed: _loadingLocation
+                      ? null
+                      : () async {
+                          setState(() {
+                            _loadingLocation = true;
+                          });
+                          await _loadLocationName();
+                        },
                 ),
               ],
             ),
@@ -435,6 +514,8 @@ class _QuickAction extends StatelessWidget {
             onTap: () {
               if (label == 'Attendance') context.push('/attendance');
               if (label == 'Assignment') context.push('/assignment');
+              if (label == 'Activity') context.push('/assignment');
+              if (label == 'Leave') context.push('/leave');
             },
             child: Container(
               height: 54,

@@ -4,27 +4,43 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../../data/models/assignment.dart';
 import '../../data/providers/assignment_provider.dart';
+import '../../core/config/env.dart';
 
-class AssignmentScreen extends StatelessWidget {
+class AssignmentScreen extends StatefulWidget {
   const AssignmentScreen({super.key});
 
   @override
+  State<AssignmentScreen> createState() => _AssignmentScreenState();
+}
+
+class _AssignmentScreenState extends State<AssignmentScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AssignmentProvider>().load();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final p = context.watch<AssignmentProvider>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Assignment / Kegiatan')),
-      body: Consumer<AssignmentProvider>(
-        builder: (context, p, _) {
+      appBar: AppBar(title: const Text('Kegiatan')),
+      body: Builder(
+        builder: (_) {
+          if (p.loading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (p.error != null) {
+            return Center(child: Text('Gagal memuat: ${p.error}'));
+          }
           if (p.items.isEmpty) {
-            return const Center(
-              child: Text('Belum ada kegiatan. Tekan + untuk menambah.'),
-            );
+            return const Center(child: Text('Belum ada kegiatan. Tekan + untuk menambah.'));
           }
           return ListView.separated(
             padding: const EdgeInsets.all(16),
-            itemBuilder: (_, i) {
-              final a = p.items[i];
-              return _AssignmentCard(item: a);
-            },
+            itemBuilder: (_, i) => _AssignmentCard(item: p.items[i]),
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemCount: p.items.length,
           );
@@ -86,17 +102,17 @@ class _AssignmentFormState extends State<_AssignmentForm> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
     final provider = context.read<AssignmentProvider>();
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    provider.addAssignment(
-      Assignment(
-        id: id,
-        title: _titleCtrl.text.trim(),
-        description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
-        imagePath: _image?.path,
-        createdAt: DateTime.now(),
-      ),
+    final created = await provider.create(
+      title: _titleCtrl.text.trim(),
+      description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
+      image: _image != null ? File(_image!.path) : null,
     );
     if (!mounted) return;
+    if (created == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(provider.error ?? 'Gagal menyimpan')));
+      setState(() => _submitting = false);
+      return;
+    }
     Navigator.of(context).pop();
   }
 
@@ -204,24 +220,31 @@ class _AssignmentCard extends StatelessWidget {
                 Expanded(
                   child: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
-                Text(_fmtTime(item.createdAt), style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text(_fmtTime(item.createdAt ?? DateTime.now()), style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               ],
             ),
             if (item.description != null && item.description!.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(item.description!, style: const TextStyle(fontSize: 13)),
             ],
-            if (item.imagePath != null) ...[
+            if (item.imageUrl != null && item.imageUrl!.isNotEmpty) ...[
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.file(File(item.imagePath!), height: 180, width: double.infinity, fit: BoxFit.cover),
+                child: Image.network(_resolveUrl(item.imageUrl!), height: 180, width: double.infinity, fit: BoxFit.cover),
               ),
             ],
           ],
         ),
       ),
     );
+  }
+
+  String _resolveUrl(String raw) {
+    final u = raw.trim();
+    if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    if (u.startsWith('/')) return Env.api(u).toString();
+    return Env.api('/$u').toString();
   }
 
   String _fmtTime(DateTime t) {

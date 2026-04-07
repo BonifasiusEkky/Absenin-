@@ -5,29 +5,47 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Assignment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class AssignmentController extends Controller
 {
     public function index(Request $request)
     {
-        $userId = $request->query('user_id');
-        $q = Assignment::query();
-        if ($userId) $q->where('user_id', $userId);
-        return response()->json($q->orderByDesc('created_at')->limit(200)->get());
+        $user = $request->user();
+        return response()->json(
+            Assignment::query()
+                ->where('user_id', $user->id)
+                ->orderByDesc('created_at')
+                ->limit(200)
+                ->get()
+        );
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
-            'user_id' => 'required|string',
             'title' => 'required|string',
             'description' => 'nullable|string',
             'image_url' => 'nullable|string',
+            'image' => 'sometimes|file|mimes:jpg,jpeg,png|max:5120',
         ]);
-        $data['id'] = (string) Str::uuid();
-        $data['created_at'] = now();
-        $a = Assignment::create($data);
+        $user = $request->user();
+
+        $imageUrl = $data['image_url'] ?? null;
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store('public/assignment-images');
+            $imageUrl = Storage::url($path); // /storage/assignment-images/...
+        }
+
+        $a = Assignment::create([
+            'id' => (string) Str::uuid(),
+            'user_id' => $user->id,
+            'title' => $data['title'],
+            'description' => $data['description'] ?? null,
+            'image_url' => $imageUrl,
+            'created_at' => now(),
+        ]);
         return response()->json($a, 201);
     }
 }

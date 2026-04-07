@@ -20,9 +20,11 @@ enum LocationCheckStatus {
 
 class LocationCheckResult {
   final LocationCheckStatus status;
+  final double? latitude;
+  final double? longitude;
   final double? distanceMeters;
   final String? message;
-  const LocationCheckResult(this.status, {this.distanceMeters, this.message});
+  const LocationCheckResult(this.status, {this.latitude, this.longitude, this.distanceMeters, this.message});
 }
 
 class LocationService {
@@ -60,15 +62,27 @@ class LocationService {
       }
 
       if (fresh.isMocked) {
-        return LocationCheckResult(LocationCheckStatus.mocked, message: 'Lokasi terdeteksi spoof / mock');
+        return LocationCheckResult(
+          LocationCheckStatus.mocked,
+          latitude: fresh.latitude,
+          longitude: fresh.longitude,
+          message: 'Lokasi terdeteksi spoof / mock',
+        );
       }
 
       final distance = _minDistanceToAnyOffice(fresh);
       if (distance <= radiusMeters) {
-        return LocationCheckResult(LocationCheckStatus.inside, distanceMeters: distance);
+        return LocationCheckResult(
+          LocationCheckStatus.inside,
+          latitude: fresh.latitude,
+          longitude: fresh.longitude,
+          distanceMeters: distance,
+        );
       }
       return LocationCheckResult(
         LocationCheckStatus.outside,
+        latitude: fresh.latitude,
+        longitude: fresh.longitude,
         distanceMeters: distance,
         message: 'Diluar radius kantor (jarak ${distance.toStringAsFixed(1)} m)',
       );

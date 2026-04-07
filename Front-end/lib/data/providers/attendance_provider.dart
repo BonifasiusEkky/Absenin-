@@ -18,19 +18,19 @@ class AttendanceProvider extends ChangeNotifier {
     _loading = true;
     _error = null;
     notifyListeners();
+    final api = ApiClient();
     try {
-      final api = ApiClient();
       final svc = AttendanceService(api);
-      final list = await svc.list(userId: user.backendUserId.toString());
+      final list = await svc.list();
       _records
         ..clear()
         ..addAll(list.map((e) => AttendanceRecord.fromJson(e)));
       // sort by date desc to mimic backend ordering
       _records.sort((a, b) => b.date.compareTo(a.date));
-      api.close();
     } catch (e) {
       _error = e.toString();
     } finally {
+      api.close();
       _loading = false;
       notifyListeners();
     }

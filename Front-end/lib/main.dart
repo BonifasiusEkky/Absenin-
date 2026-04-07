@@ -7,6 +7,7 @@ import 'core/routing/app_router.dart';
 import 'data/providers/attendance_provider.dart';
 import 'data/providers/location_access_provider.dart';
 import 'data/providers/assignment_provider.dart';
+import 'data/providers/leave_provider.dart';
 import 'data/providers/user_provider.dart';
 import 'core/config/env.dart';
 
@@ -37,6 +38,7 @@ class AbsenInApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AttendanceProvider()),
         ChangeNotifierProvider(create: (_) => LocationAccessProvider()),
         ChangeNotifierProvider(create: (_) => AssignmentProvider()),
+        ChangeNotifierProvider(create: (_) => LeaveProvider()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
       ],
       child: MaterialApp.router(

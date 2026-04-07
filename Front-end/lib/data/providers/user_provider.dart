@@ -7,6 +7,8 @@ class UserProvider extends ChangeNotifier {
   String email;
   String employeeId;
   int backendUserId; // numeric user id in Laravel backend DB
+  String backendRole; // employee|hrd
+  String workMode; // wfo|wfh
   String? avatarPath; // local path to avatar image
 
   UserProvider({
@@ -16,6 +18,8 @@ class UserProvider extends ChangeNotifier {
     this.email = 'ekky@naraya.co.id',
     this.employeeId = 'NT-001',
     this.backendUserId = 1,
+    this.backendRole = 'employee',
+    this.workMode = 'wfo',
     this.avatarPath,
   });
 
@@ -24,13 +28,24 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateProfile({String? name, String? role, String? company, String? email, String? employeeId, int? backendUserId}) {
+  void updateProfile({
+    String? name,
+    String? role,
+    String? company,
+    String? email,
+    String? employeeId,
+    int? backendUserId,
+    String? backendRole,
+    String? workMode,
+  }) {
     if (name != null) this.name = name;
     if (role != null) this.role = role;
     if (company != null) this.company = company;
     if (email != null) this.email = email;
     if (employeeId != null) this.employeeId = employeeId;
     if (backendUserId != null) this.backendUserId = backendUserId;
+    if (backendRole != null) this.backendRole = backendRole;
+    if (workMode != null) this.workMode = workMode;
     notifyListeners();
   }
 }

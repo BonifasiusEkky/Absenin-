@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
 import '../core/config/env.dart';
 import '../core/network/api_client.dart';
 
@@ -18,31 +20,38 @@ class AttendanceService {
     throw FormatException('Unexpected attendances response: ${res.body}');
   }
 
-  Future<Map<String, dynamic>> checkIn({required String userId, required DateTime date, required DateTime time, double? latitude, double? longitude, double? distanceM}) async {
+  Future<Map<String, dynamic>> checkIn({required DateTime date, required DateTime time, required double latitude, required double longitude, required File photo}) async {
     String d(DateTime dt) => '${dt.year.toString().padLeft(4,'0')}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}';
     String t(DateTime dt) => '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}:${dt.second.toString().padLeft(2,'0')}';
-    final body = {
-      'user_id': userId,
-      'date': d(date),
-      'time': t(time),
-      if (latitude != null) 'latitude': latitude,
-      if (longitude != null) 'longitude': longitude,
-      if (distanceM != null) 'distance_m': distanceM,
-    };
-    final res = await _api.postJson(Env.api('/api/attendances/check-in'), body);
+
+    final res = await _api.postMultipart(
+      Env.api('/api/attendances/check-in'),
+      fields: {
+        'date': d(date),
+        'time': t(time),
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+      },
+      files: [await http.MultipartFile.fromPath('photo', photo.path)],
+    );
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> checkOut({required String userId, required DateTime date, required DateTime time, String? activity}) async {
+  Future<Map<String, dynamic>> checkOut({required DateTime date, required DateTime time, required double latitude, required double longitude, required File photo, required String activity}) async {
     String d(DateTime dt) => '${dt.year.toString().padLeft(4,'0')}-${dt.month.toString().padLeft(2,'0')}-${dt.day.toString().padLeft(2,'0')}';
     String t(DateTime dt) => '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}:${dt.second.toString().padLeft(2,'0')}';
-    final body = {
-      'user_id': userId,
-      'date': d(date),
-      'time': t(time),
-      if (activity != null && activity.isNotEmpty) 'activity': activity,
-    };
-    final res = await _api.postJson(Env.api('/api/attendances/check-out'), body);
+
+    final res = await _api.postMultipart(
+      Env.api('/api/attendances/check-out'),
+      fields: {
+        'date': d(date),
+        'time': t(time),
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+        'activity': activity,
+      },
+      files: [await http.MultipartFile.fromPath('photo', photo.path)],
+    );
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 }

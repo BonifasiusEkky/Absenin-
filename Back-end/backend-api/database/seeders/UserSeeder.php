@@ -30,6 +30,11 @@ class UserSeeder extends Seeder
                     'name' => $name,
                     'password' => Hash::make('password123'),
                     'email_verified_at' => now(),
+                    // Seed defaults for role-based access
+                    'role' => $i === 2 ? 'hrd' : 'employee',
+                    'is_active' => true,
+                    'work_mode' => 'wfo',
+                    'job_title' => null,
                 ]
             );
         }

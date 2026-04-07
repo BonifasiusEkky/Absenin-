@@ -8,9 +8,7 @@ import 'package:http/http.dart' as http;
 import '../../data/providers/location_access_provider.dart';
 import '../../services/location_service.dart';
 import '../../services/attendance_service.dart';
-import '../../services/face_service.dart';
 import '../../core/network/api_client.dart';
-import '../../core/config/env.dart';
 import '../../data/providers/user_provider.dart';
 import '../../data/providers/attendance_provider.dart';
 
@@ -57,44 +55,29 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final api = ApiClient();
     try {
-      // 1) Health checks (optional but helpful)
-      final faceSvc = FaceService(api);
-      final faceOk = await faceSvc.health();
-      if (!faceOk) {
-        messenger.showSnackBar(const SnackBar(content: Text('Face service tidak siap')));
-        setState(() => verifying = false);
-        return;
-      }
-
-      // 2) Call Laravel proxy /api/face/verify with user_id + image (captured)
-      //    Use ApiClient.postMultipart to ensure Accept: application/json header,
-      //    so Laravel returns JSON (not HTML redirect) on validation errors.
       final user = context.read<UserProvider>();
-      final res = await api.postMultipart(
-        Env.api('/api/face/verify'),
-        fields: {'user_id': user.backendUserId.toString()},
-        files: [await http.MultipartFile.fromPath('image', captured!.path)],
-      );
-      final json = jsonDecode(res.body) as Map<String, dynamic>;
-      final verified = json['verified'] == true;
-      if (!verified) {
-        messenger.showSnackBar(const SnackBar(content: Text('Verifikasi wajah gagal. Coba ulangi.')));
+      // Ensure we have a fresh location reading (backend requires lat/lng)
+      final access = context.read<LocationAccessProvider>();
+      final loc = await access.verify();
+      if (loc.status != LocationCheckStatus.inside && !(user.workMode == 'wfh' && loc.status == LocationCheckStatus.outside)) {
+        messenger.showSnackBar(SnackBar(content: Text(loc.message ?? 'Gagal mendapatkan lokasi')));
+        setState(() => verifying = false);
+        return;
+      }
+      if (loc.latitude == null || loc.longitude == null) {
+        messenger.showSnackBar(const SnackBar(content: Text('Koordinat lokasi tidak tersedia')));
         setState(() => verifying = false);
         return;
       }
 
-      // 3) On success, call attendance check-in
       final now = DateTime.now();
       final attendanceSvc = AttendanceService(api);
-      final locProv = context.read<LocationAccessProvider>();
-      final distance = locProv.lastResult?.distanceMeters;
       await attendanceSvc.checkIn(
-        userId: user.backendUserId.toString(),
         date: DateTime(now.year, now.month, now.day),
         time: now,
-        latitude: null, // integrate actual current lat/lng if available
-        longitude: null,
-        distanceM: distance,
+        latitude: loc.latitude!,
+        longitude: loc.longitude!,
+        photo: File(captured!.path),
       );
       // Refresh attendance provider
       try {
@@ -107,7 +90,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
       }
     } on ApiError catch (e) {
       // Try to parse JSON error from backend to show clearer message
-      String msg = 'Gagal verifikasi wajah (HTTP ${e.statusCode}).';
+      String msg = 'Gagal presensi (HTTP ${e.statusCode}).';
       try {
         final body = jsonDecode(e.body);
         if (body is Map<String, dynamic>) {
@@ -117,11 +100,8 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
             final flat = errors.values.expand((v) => (v as List).map((x) => x.toString())).join('\n');
             msg = flat.isNotEmpty ? flat : msg;
           }
-          // Face-service or proxy error
-          else if (body['ok'] == false && body['error'] is String) {
-            msg = body['error'];
-          } else if (body['verified'] == false) {
-            msg = 'Wajah tidak cocok dengan data terdaftar. Coba ulangi dengan posisi wajah jelas.';
+          else if (body['message'] is String) {
+            msg = body['message'] as String;
           }
         }
       } catch (_) {}
