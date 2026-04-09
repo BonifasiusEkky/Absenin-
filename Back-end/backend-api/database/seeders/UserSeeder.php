@@ -13,6 +13,20 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
+        // Dedicated HRD account (for admin/HRD-only endpoints)
+        User::updateOrCreate(
+            ['email' => 'hrd@example.com'],
+            [
+                'name' => 'HRD',
+                'password' => Hash::make('password123'),
+                'email_verified_at' => now(),
+                'role' => 'hrd',
+                'is_active' => true,
+                'work_mode' => 'wfo',
+                'job_title' => null,
+            ]
+        );
+
         $names = [
             'Boni', 'Farrel', 'Juan', 'Diqi', 'Juan', 'Wildan', 'Filah', 'Fikri'
         ];
@@ -31,7 +45,7 @@ class UserSeeder extends Seeder
                     'password' => Hash::make('password123'),
                     'email_verified_at' => now(),
                     // Seed defaults for role-based access
-                    'role' => $i === 2 ? 'hrd' : 'employee',
+                    'role' => 'employee',
                     'is_active' => true,
                     'work_mode' => 'wfo',
                     'job_title' => null,

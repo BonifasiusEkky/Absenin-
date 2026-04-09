@@ -483,7 +483,7 @@ class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
       child: Row(
         children: const [
           _QuickAction(icon: Icons.fact_check_outlined, label: 'Attendance', color: Color(0xFF2D82F4)),
