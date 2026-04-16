@@ -32,6 +32,7 @@
           <div class="text-muted">Attendances today</div>
           <div class="fs-4 fw-semibold">{{ $stats['attendances_today'] }}</div>
           <div class="text-muted small">Check-in: {{ $stats['checkin_today'] }} | Check-out: {{ $stats['checkout_today'] }}</div>
+          <div class="text-muted small">Not check-in (est.): {{ $stats['absent_today_estimate'] }}</div>
         </div>
       </div>
     </div>

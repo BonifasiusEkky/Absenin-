@@ -11,6 +11,7 @@ class Attendance extends Model
         'id',
         'user_id',
         'date',
+        'status',
         'check_in',
         'check_out',
         // Legacy combined fields

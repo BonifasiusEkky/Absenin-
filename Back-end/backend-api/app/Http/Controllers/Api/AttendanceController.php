@@ -58,6 +58,12 @@ class AttendanceController extends Controller
             $att->id = (string) Str::uuid();
         }
 
+        // Prevent double check-in
+        if ($att->exists && !is_null($att->check_in)) {
+            return response()->json(['message' => 'Sudah check-in untuk tanggal ini'], 409);
+        }
+
+        $att->status = 'present';
         $att->check_in = $time;
         $att->check_in_latitude = (float) $data['latitude'];
         $att->check_in_longitude = (float) $data['longitude'];
@@ -105,6 +111,14 @@ class AttendanceController extends Controller
         if (!$att) {
             return response()->json(['message' => 'Attendance not found'], 404);
         }
+        if (is_null($att->check_in)) {
+            return response()->json(['message' => 'Harus check-in dulu'], 422);
+        }
+        if (!is_null($att->check_out)) {
+            return response()->json(['message' => 'Sudah check-out untuk tanggal ini'], 409);
+        }
+
+        $att->status = 'present';
 
         [$photoPath, $face] = $this->storeAndVerifyFace($user->id, $request->file('photo'));
 

@@ -37,6 +37,7 @@
           <tr>
             <th>ID</th>
             <th>Date</th>
+            <th>Status</th>
             <th>User</th>
             <th>Check-in</th>
             <th>Check-out</th>
@@ -50,6 +51,16 @@
             <tr>
               <td>{{ $a->id }}</td>
               <td>{{ $a->date }}</td>
+              <td>
+                @php
+                  $st = $a->status ?? 'present';
+                  $badge = 'secondary';
+                  if ($st === 'present') $badge = 'success';
+                  if ($st === 'absent') $badge = 'danger';
+                  if ($st === 'leave') $badge = 'info';
+                @endphp
+                <span class="badge text-bg-{{ $badge }}">{{ $st }}</span>
+              </td>
               <td>
                 <div class="fw-semibold">{{ $a->user?->name ?? ('#'.$a->user_id) }}</div>
                 <div class="text-muted small">{{ $a->user?->email }}</div>
