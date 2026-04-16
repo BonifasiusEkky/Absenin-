@@ -42,4 +42,9 @@ class Attendance extends Model
         'check_in_face_threshold',
         'check_out_face_threshold',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }

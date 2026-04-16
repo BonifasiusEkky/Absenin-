@@ -20,4 +20,9 @@ class Leave extends Model
         'decided_at',
         'decision_note',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }
